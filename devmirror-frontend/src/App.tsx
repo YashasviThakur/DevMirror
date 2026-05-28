@@ -38,9 +38,9 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <Routes>
-          {/* Public */}
-          <Route path="/"      element={<Landing />} />
-          <Route path="/login" element={<Login />} />
+          {/* Coral demo: skip login — go straight to dashboard */}
+          <Route path="/"      element={<Navigate to="/dashboard" replace />} />
+          <Route path="/login" element={<Navigate to="/dashboard" replace />} />
 
           {/* Core workspace */}
           <Route path="/dashboard"   element={<Dashboard />} />

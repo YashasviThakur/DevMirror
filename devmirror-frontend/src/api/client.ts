@@ -17,19 +17,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 // -- Session helpers ------------------------------------------------------------
+// Coral demo branch: no auth needed — always act as user 1
 
 export function getUserId(): number | null {
-  const v = localStorage.getItem('dm_user_id')
-  return v ? parseInt(v, 10) : null
+  return 1
 }
 
-export function setUserId(id: number): void {
-  localStorage.setItem('dm_user_id', String(id))
-}
+export function setUserId(_id: number): void {}
 
-export function clearUserId(): void {
-  localStorage.removeItem('dm_user_id')
-}
+export function clearUserId(): void {}
 
 // -- Shared types ---------------------------------------------------------------
 
@@ -216,7 +212,7 @@ export const api = {
   health: () => request<HealthData>('/api/health'),
 
   // User profile
-  getUser:         (id: number) => request<UserProfile>(`/api/user/${id}`),
+  getUser:         (_id: number) => request<UserProfile>(`/api/coral/user`),
   updateGoals:     (id: number, goals: { goal_1?: string; goal_2?: string; goal_3?: string }) =>
                      request<{ success: boolean }>(`/api/user/${id}/goals`, { method: 'PATCH', body: JSON.stringify(goals) }),
   updateHandles:   (id: number, handles: { codeforces_handle?: string; leetcode_username?: string }) =>
@@ -226,16 +222,16 @@ export const api = {
   updateGithubUsername: (id: number, username: string) =>
                      request<{ success: boolean }>(`/api/user/${id}/github-username`, { method: 'PATCH', body: JSON.stringify({ github_username: username }) }),
 
-  // Data sources
-  github:     (userId: number) => request<GitHubData>(`/api/data/github?user_id=${userId}`),
-  leetcode:   (userId: number) => request<LeetCodeData>(`/api/data/leetcode?user_id=${userId}`),
-  codeforces: (userId: number) => request<CodeForcesData>(`/api/data/codeforces?user_id=${userId}`),
-  gmail:      (userId: number) => request<GmailData>(`/api/data/gmail?user_id=${userId}`),
-  calendar:   (userId: number) => request<CalendarData>(`/api/data/calendar?user_id=${userId}`),
-  allData:    (userId: number) => request<AllData>(`/api/data/all?user_id=${userId}`),
+  // Data sources — routed through Coral SQL (no auth needed)
+  github:     (_userId: number) => request<GitHubData>(`/api/coral/github`),
+  leetcode:   (_userId: number) => request<LeetCodeData>(`/api/coral/leetcode`),
+  codeforces: (_userId: number) => request<CodeForcesData>(`/api/coral/codeforces`),
+  gmail:      (_userId: number) => request<GmailData>(`/api/coral/gmail`),
+  calendar:   (_userId: number) => request<CalendarData>(`/api/data/calendar?user_id=${_userId}`),
+  allData:    (_userId: number) => request<AllData>(`/api/coral/all`),
 
-  // YouTube liked videos (auto-fetched via OAuth)
-  youtubeLiked: (userId: number) => request<YouTubeLikedData>(`/api/data/youtube/liked?user_id=${userId}`),
+  // YouTube liked videos via Coral SQL
+  youtubeLiked: (_userId: number) => request<YouTubeLikedData>(`/api/coral/youtube`),
 
   // YouTube history upload
   uploadYoutubeHistory: async (userId: number, file: File): Promise<YouTubeAnalysis> => {

@@ -1853,6 +1853,102 @@ async def lvb_compat(user_id: Optional[int] = Query(None), db: Session = Depends
     }
 
 
+# ── Coral Demo endpoints (no auth, single-user hardcoded data via Coral SQL) ───
+
+CORAL_DEMO_CF_HANDLE   = "yashasvithakur2005"
+CORAL_DEMO_GH_USERNAME = "YashasviThakur"
+CORAL_DEMO_LC_HANDLE   = "yashasvithakur2005"
+
+
+@app.get("/api/coral/youtube")
+async def coral_youtube():
+    """YouTube liked videos via Coral SQL — no auth required."""
+    try:
+        return _fetch_youtube_liked("")   # token ignored; Coral uses stored credential
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/coral/gmail")
+async def coral_gmail():
+    """Gmail opportunities via Coral SQL — no auth required."""
+    try:
+        emails = _fetch_gmail("")   # token ignored; Coral uses stored credential
+        return {"summary": f"Found {len(emails)} developer opportunity email(s).", "emails": emails}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/coral/codeforces")
+async def coral_codeforces():
+    """Codeforces data via Coral SQL — no auth required."""
+    try:
+        return _fetch_codeforces(CORAL_DEMO_CF_HANDLE)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/coral/github")
+async def coral_github():
+    """GitHub data via direct API — no auth required."""
+    try:
+        result = _fetch_github_cached(CORAL_DEMO_GH_USERNAME)
+        result.pop("_events", None)
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/coral/leetcode")
+async def coral_leetcode():
+    """LeetCode data via direct API — no auth required."""
+    try:
+        return _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/coral/all")
+async def coral_all():
+    """All data via Coral SQL + direct APIs — no auth required."""
+    gh, lc, cf, gmail_raw = await asyncio.gather(
+        _run(_fetch_github_cached, CORAL_DEMO_GH_USERNAME),
+        _run(_fetch_leetcode, CORAL_DEMO_LC_HANDLE),
+        _run(_fetch_codeforces, CORAL_DEMO_CF_HANDLE),
+        _run(_fetch_gmail, ""),
+    )
+    if isinstance(gh, dict):
+        gh.pop("_events", None)
+    return {
+        "github":       gh,
+        "leetcode":     lc,
+        "codeforces":   cf,
+        "gmail":        gmail_raw,
+        "calendar":     None,
+        "generated_at": datetime.utcnow().isoformat(),
+    }
+
+
+@app.get("/api/coral/user")
+async def coral_user():
+    """Hardcoded demo user profile — no auth required."""
+    return {
+        "id":                1,
+        "email":             "yashasvithakur2005@gmail.com",
+        "account_type":      "personal",
+        "institution_name":  None,
+        "goal_1":            "Crack LeetCode 150",
+        "goal_2":            "Reach CF 1600",
+        "goal_3":            "Land a top internship",
+        "created_at":        None,
+        "has_google":        True,
+        "has_github":        True,
+        "github_username":   CORAL_DEMO_GH_USERNAME,
+        "codeforces_handle": CORAL_DEMO_CF_HANDLE,
+        "leetcode_username": CORAL_DEMO_LC_HANDLE,
+    }
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

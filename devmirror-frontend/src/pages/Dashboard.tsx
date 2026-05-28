@@ -235,13 +235,9 @@ export default function Dashboard() {
       subtitle={`${greeting}, ${userLabel} · ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
       actions={
         <div className="flex items-center gap-2">
-          {savingGoals && <span className="text-xs text-dm-muted font-mono animate-pulse">Saving?</span>}
-          <button
-            onClick={() => setShowSettings(v => !v)}
-            className={clsx('dm-btn-ghost flex items-center gap-2 text-sm', showSettings && 'border-dm-purple/50 text-dm-purple-ll')}
-          >
-            <Settings2 size={14} /> Accounts
-          </button>
+          <span className="text-xs font-mono px-2 py-1 rounded border border-dm-purple/40 text-dm-purple-ll bg-dm-purple-dim">
+            ⚡ Powered by Coral SQL
+          </span>
           <button onClick={handleRefresh} disabled={refreshing || loading} className="dm-btn-ghost flex items-center gap-2 text-sm">
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh
           </button>
