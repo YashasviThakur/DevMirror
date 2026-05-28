@@ -1908,23 +1908,61 @@ async def coral_leetcode():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.get("/api/coral/calendar")
+async def coral_calendar():
+    """Google Calendar events via Coral SQL — no auth required."""
+    try:
+        now = datetime.utcnow().isoformat() + "Z"
+        future = (datetime.utcnow() + timedelta(days=14)).isoformat() + "Z"
+        rows = coral_client.get_calendar_events("", time_min=now, time_max=future)
+        if rows is None:
+            # fallback: return empty
+            return {"events": []}
+        events = [
+            {
+                "id":          r.get("id", ""),
+                "summary":     r.get("summary", ""),
+                "description": r.get("description", ""),
+                "start":       str(r.get("start_date_time") or r.get("start_date") or ""),
+                "end":         str(r.get("end_date_time") or r.get("end_date") or ""),
+            }
+            for r in rows
+        ]
+        return {"events": events}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/api/coral/all")
 async def coral_all():
     """All data via Coral SQL + direct APIs — no auth required."""
-    gh, lc, cf, gmail_raw = await asyncio.gather(
+    gh, lc, cf, gmail_raw, cal_rows = await asyncio.gather(
         _run(_fetch_github_cached, CORAL_DEMO_GH_USERNAME),
         _run(_fetch_leetcode, CORAL_DEMO_LC_HANDLE),
         _run(_fetch_codeforces, CORAL_DEMO_CF_HANDLE),
         _run(_fetch_gmail, ""),
+        _run(coral_client.get_calendar_events, "", "", ""),
     )
     if isinstance(gh, dict):
         gh.pop("_events", None)
+    cal_events = None
+    if cal_rows:
+        cal_events = [
+            {
+                "id":          r.get("id", ""),
+                "summary":     r.get("summary", ""),
+                "description": r.get("description", ""),
+                "start":       str(r.get("start_date_time") or r.get("start_date") or ""),
+                "end":         str(r.get("end_date_time") or r.get("end_date") or ""),
+            }
+            for r in cal_rows
+        ]
     return {
         "github":       gh,
         "leetcode":     lc,
         "codeforces":   cf,
         "gmail":        gmail_raw,
-        "calendar":     None,
+        "calendar":     {"events": cal_events} if cal_events else None,
         "generated_at": datetime.utcnow().isoformat(),
     }
 

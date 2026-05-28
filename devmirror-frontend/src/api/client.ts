@@ -227,7 +227,7 @@ export const api = {
   leetcode:   (_userId: number) => request<LeetCodeData>(`/api/coral/leetcode`),
   codeforces: (_userId: number) => request<CodeForcesData>(`/api/coral/codeforces`),
   gmail:      (_userId: number) => request<GmailData>(`/api/coral/gmail`),
-  calendar:   (_userId: number) => request<CalendarData>(`/api/data/calendar?user_id=${_userId}`),
+  calendar:   (_userId: number) => request<CalendarData>(`/api/coral/calendar`),
   allData:    (_userId: number) => request<AllData>(`/api/coral/all`),
 
   // YouTube liked videos via Coral SQL

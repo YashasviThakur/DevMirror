@@ -134,6 +134,24 @@ def get_youtube_channel_stats(access_token: str) -> Optional[dict[str, Any]]:
     return rows[0] if rows else None
 
 
+# ── Google Calendar ────────────────────────────────────────────────────────────
+
+def get_calendar_events(access_token: str, time_min: str = "", time_max: str = "") -> Optional[list[dict]]:
+    """Upcoming calendar events via Coral SQL."""
+    env = {"GOOGLE_CALENDAR_ACCESS_TOKEN": access_token}
+    where = ""
+    if time_min:
+        where += f" WHERE time_min = '{time_min}'"
+    if time_max:
+        where += (" AND" if where else " WHERE") + f" time_max = '{time_max}'"
+    return _run_sql(
+        f"SELECT id, summary, description, start_date_time, end_date_time, location, html_link "
+        f"FROM google_calendar.events{where} "
+        f"ORDER BY start_date_time ASC LIMIT 50",
+        env=env,
+    )
+
+
 # ── GitHub ─────────────────────────────────────────────────────────────────────
 # Uses Coral's built-in GitHub source (sources/core/github).
 # GITHUB_TOKEN is passed per-request via env var — each user's PAT is used,
