@@ -38,7 +38,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 def _get_demo_google_token(db: Session) -> Optional[str]:
     """
     Return a valid Google access token for the coral demo.
-    Priority: DB user 1 → GOOGLE_REFRESH_TOKEN env var → GOOGLE_ACCESS_TOKEN env var.
+    Priority: DB user 1 → any stored Google refresh token env var → GOOGLE_ACCESS_TOKEN.
     Caches the env-var refresh result for 55 minutes.
     """
     token = refresh_google_token_if_needed(1, db)
@@ -49,7 +49,13 @@ def _get_demo_google_token(db: Session) -> Optional[str]:
     if cached:
         return cached
 
-    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+    # Check all possible refresh token env var names (Railway uses separate keys per service)
+    refresh_token = (
+        os.getenv("GOOGLE_REFRESH_TOKEN", "")
+        or os.getenv("GMAIL_REFRESH_TOKEN", "")
+        or os.getenv("GOOGLE_CALENDAR_REFRESH_TOKEN", "")
+        or os.getenv("YOUTUBE_REFRESH_TOKEN", "")
+    )
     if refresh_token:
         resp = requests.post(
             GOOGLE_TOKEN_URL,
