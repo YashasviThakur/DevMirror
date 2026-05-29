@@ -249,10 +249,10 @@ export const api = {
       body: JSON.stringify({ user_id: userId, question }),
     }),
 
-  // Backward-compat endpoints (used by old pages)
-  dsa:          (userId?: number) => request<DSAData>(`/api/dsa${userId ? `?user_id=${userId}` : ''}`),
-  growthReport: (userId?: number) => request<GrowthReportData>(`/api/growth-report${userId ? `?user_id=${userId}` : ''}`),
-  focus:        (userId?: number) => request<FocusData>(`/api/focus${userId ? `?user_id=${userId}` : ''}`),
-  learnVsBuild: (userId?: number) => request<LearnVsBuildData>(`/api/learn-vs-build${userId ? `?user_id=${userId}` : ''}`),
-  internship:   (userId?: number) => request<InternshipData>(`/api/internship${userId ? `?user_id=${userId}` : ''}`),
+  // Backward-compat endpoints — routed to coral/no-auth versions
+  dsa:          (_userId?: number) => request<DSAData>(`/api/dsa?user_id=1`),
+  growthReport: (_userId?: number) => request<GrowthReportData>(`/api/growth-report?user_id=1`),
+  focus:        (_userId?: number) => request<FocusData>(`/api/focus?user_id=1`),
+  learnVsBuild: (_userId?: number) => request<LearnVsBuildData>(`/api/learn-vs-build?user_id=1`),
+  internship:   (_userId?: number) => request<InternshipData>(`/api/internship?user_id=1`),
 }

@@ -1860,6 +1860,102 @@ CORAL_DEMO_GH_USERNAME = "YashasviThakur"
 CORAL_DEMO_LC_HANDLE   = "yashasvithakur2005"
 
 
+# Override legacy endpoints so user_id=1 works without a real DB user
+@app.get("/api/dsa", include_in_schema=False)
+async def dsa_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+    lc = _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
+    cf = _fetch_codeforces(CORAL_DEMO_CF_HANDLE)
+    return {"leetcode": lc, "codeforces": cf}
+
+
+@app.get("/api/internship", include_in_schema=False)
+async def internship_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+    emails = _fetch_gmail("")
+    return {"summary": f"Found {len(emails)} leads.", "emails": emails}
+
+
+@app.get("/api/growth-report", include_in_schema=False)
+async def growth_report_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+    gh, lc, cf = await asyncio.gather(
+        _run(_fetch_github_cached, CORAL_DEMO_GH_USERNAME),
+        _run(_fetch_leetcode, CORAL_DEMO_LC_HANDLE),
+        _run(_fetch_codeforces, CORAL_DEMO_CF_HANDLE),
+    )
+    report = (
+        f"GitHub: {gh.get('commits_week', 0)} commits this week across {gh.get('repos', 0)} repos. "
+        f"LeetCode: {lc.get('total_solved', 0)} solved (streak: {lc.get('streak', 0)} days). "
+        f"Codeforces rating: {cf.get('rating', 0)} ({cf.get('rank', 'unrated')})."
+    ) if gh and lc and cf else "Data loading via Coral SQL..."
+    return {
+        "report":       report,
+        "github":       {"repos": gh.get("repos", 0), "commits_week": gh.get("commits_week", 0), "top_repo": gh.get("top_repo", ""), "languages": gh.get("languages", [])} if gh else {},
+        "leetcode":     {"total": lc.get("total_solved", 0), "easy": lc.get("easy", 0), "medium": lc.get("medium", 0), "hard": lc.get("hard", 0), "streak": lc.get("streak", 0)} if lc else {},
+        "codeforces":   {"rating": cf.get("rating", 0), "rank": cf.get("rank", ""), "solved": cf.get("solved", 0)} if cf else {},
+        "calendar":     {"study_hours_week": 0, "upcoming": []},
+        "generated_at": datetime.utcnow().isoformat(),
+    }
+
+
+@app.get("/api/focus", include_in_schema=False)
+async def focus_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+    lc = _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
+    cf = _fetch_codeforces(CORAL_DEMO_CF_HANDLE)
+    if lc and lc.get("streak", 0) > 0:
+        priority = f"Maintain your {lc['streak']}-day LeetCode streak"
+        reasoning = "Streak momentum is hard to rebuild — protect it"
+    elif cf and cf.get("rating", 0) < 1200:
+        priority = "Attempt a Codeforces Div. 3 contest"
+        reasoning = "Contests build speed and pressure-handling"
+    else:
+        priority = "Push at least one commit today"
+        reasoning = "Building habit — even a small commit counts"
+    return {
+        "recommendation": f"Focus on: {priority}. {reasoning}.",
+        "priority_task":  priority,
+        "reasoning":      reasoning,
+        "calendar_today": [],
+        "youtube_watched": [],
+    }
+
+
+@app.get("/api/learn-vs-build", include_in_schema=False)
+async def learn_vs_build_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+    gh = _fetch_github_cached(CORAL_DEMO_GH_USERNAME)
+    lc = _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
+    commits = gh.get("commits_week", 0) if gh else 0
+    solved  = lc.get("total_solved", 0) if lc else 0
+    learn_score = min(100, solved * 2)
+    build_score = min(100, commits * 10)
+    total = learn_score + build_score or 1
+    balance = "balanced" if abs(learn_score - build_score) < 20 else ("learning_heavy" if learn_score > build_score else "building_heavy")
+    return {
+        "analysis":            f"You've solved {solved} problems and made {commits} commits this week.",
+        "learn_score":         learn_score,
+        "build_score":         build_score,
+        "balance":             balance,
+        "github_commits_week": commits,
+        "youtube_hours_week":  0,
+        "study_hours_week":    0,
+        "trend":               [],
+    }
+
+
+@app.post("/api/agent/ask", include_in_schema=False)
+async def ask_coral(body: AskRequest, _db: Session = Depends(get_db)):
+    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
+        goal_1="Crack LeetCode 150",
+        goal_2="Reach CF 1600",
+        goal_3="Land a top internship",
+        today=datetime.utcnow().strftime("%Y-%m-%d"),
+    )
+    raw_response, gemini_ok = call_ai(system_prompt, body.question)
+    return {
+        "response":          raw_response,
+        "scheduled_events":  [],
+        "is_schedule":       False,
+    }
+
+
 @app.get("/api/coral/youtube")
 async def coral_youtube():
     """YouTube liked videos via Coral SQL — no auth required."""
