@@ -436,9 +436,9 @@ def _categorize_subject(subject: str) -> str:
 
 
 def _fetch_gmail(access_token: str) -> list[dict[str, Any]]:
-    # Try Coral SQL first — passes token via env var so each user gets their own data
+    # Try Coral SQL first
     coral_rows = coral_client.get_gmail_opportunities(access_token)
-    if coral_rows is not None:
+    if coral_rows:  # non-empty list
         results = []
         for row in coral_rows:
             subject = row.get("snippet", "")[:80]
@@ -448,13 +448,18 @@ def _fetch_gmail(access_token: str) -> list[dict[str, Any]]:
                 "from":            "",
                 "date":            "",
                 "snippet":         row.get("snippet", ""),
-                "category":        _categorize_subject(subject),
+                "category":        _categorize_subject(row.get("snippet", "")),
                 "ai_summary":      "",
                 "action_required": False,
                 "gmail_link":      f"https://mail.google.com/mail/u/0/#inbox/{row.get('id', '')}",
             })
         return results
 
+    # Coral returned None or empty — fall back to direct Gmail API using env token
+    if not access_token:
+        access_token = os.environ.get("GMAIL_ACCESS_TOKEN", "")
+    if not access_token:
+        return []
     headers = {"Authorization": f"Bearer {access_token}"}
 
     list_resp = requests.get(
@@ -1041,11 +1046,16 @@ def _call_gemini(system_prompt: str, user_message: str) -> tuple[str, bool]:
 
 
 def call_ai(system_prompt: str, user_message: str) -> tuple[str, bool]:
-    """Call the appropriate AI API (Cohere preferred, fall back to Gemini)."""
+    """Call AI: Cohere preferred, fall back to Gemini if Cohere rate-limited or fails."""
     if USE_COHERE:
-        return _call_cohere(system_prompt, user_message)
-    else:
-        return _call_gemini(system_prompt, user_message)
+        text, ok = _call_cohere(system_prompt, user_message)
+        if ok:
+            return text, True
+        if GEMINI_API_KEY:
+            logger.warning("Cohere failed, falling back to Gemini")
+            return _call_gemini(system_prompt, user_message)
+        return text, ok
+    return _call_gemini(system_prompt, user_message)
 
 
 # ── Pydantic request/response models ──────────────────────────────────────────
@@ -1505,21 +1515,33 @@ async def coral_calendar():
         rows = coral_client.get_calendar_events("")
         if rows is None:
             return {"events": []}
-        now_iso = datetime.utcnow().isoformat()
+        now = datetime.utcnow()
+        cutoff = now - timedelta(days=1)  # include events from yesterday onwards
         events = []
         for r in rows:
-            start = str(r.get("start_date_time") or r.get("start_date") or "")
-            # filter past events
-            if start and start[:19] < now_iso[:19]:
+            start_raw = str(r.get("start_date_time") or r.get("start_date") or "")
+            if not start_raw:
+                continue
+            try:
+                if "T" in start_raw:
+                    start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00")).replace(tzinfo=None)
+                else:
+                    start_dt = datetime.strptime(start_raw[:10], "%Y-%m-%d")
+            except (ValueError, TypeError):
+                continue
+            if start_dt < cutoff:
                 continue
             events.append({
                 "id":          r.get("id", ""),
                 "summary":     r.get("summary", ""),
                 "description": r.get("description", ""),
-                "start":       start,
+                "start":       start_raw,
                 "end":         str(r.get("end_date_time") or r.get("end_date") or ""),
+                "_sort":       start_dt,
             })
-        events.sort(key=lambda e: e["start"])
+        events.sort(key=lambda e: e["_sort"])
+        for e in events:
+            e.pop("_sort", None)
         return {"events": events[:30]}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

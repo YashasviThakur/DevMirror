@@ -88,14 +88,12 @@ def get_codeforces_rating_history(handle: str) -> Optional[list[dict]]:
 
 def get_gmail_opportunities(access_token: str) -> Optional[list[dict]]:
     """
-    Query Gmail for internship/hackathon/scholarship threads via Coral SQL.
+    Query Gmail for recent threads via Coral SQL.
     Passes the OAuth token via environment variable so it stays out of the query string.
     """
     env = {"GMAIL_ACCESS_TOKEN": access_token}
     return _run_sql(
-        "SELECT id, snippet FROM gmail.threads "
-        "WHERE q = 'subject:(internship OR hackathon OR scholarship OR hiring OR opportunity)' "
-        "LIMIT 20",
+        "SELECT id, snippet FROM gmail.threads LIMIT 50",
         env=env,
     )
 
