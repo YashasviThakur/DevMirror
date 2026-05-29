@@ -33,6 +33,42 @@ from models import User, LinkedAccount, get_db, init_db
 from auth_router import router as auth_router, refresh_google_token_if_needed
 import coral_client
 
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+def _get_demo_google_token(db: Session) -> Optional[str]:
+    """
+    Return a valid Google access token for the coral demo.
+    Priority: DB user 1 → GOOGLE_REFRESH_TOKEN env var → GOOGLE_ACCESS_TOKEN env var.
+    Caches the env-var refresh result for 55 minutes.
+    """
+    token = refresh_google_token_if_needed(1, db)
+    if token:
+        return token
+
+    cached = _cache_get("demo_google_token")
+    if cached:
+        return cached
+
+    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN", "")
+    if refresh_token:
+        resp = requests.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id":     os.getenv("GOOGLE_CLIENT_ID", ""),
+                "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+                "refresh_token": refresh_token,
+                "grant_type":    "refresh_token",
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            new_token = resp.json().get("access_token", "")
+            if new_token:
+                _cache_set("demo_google_token", new_token, ttl_seconds=3300)
+                return new_token
+
+    return os.getenv("GOOGLE_ACCESS_TOKEN", "") or None
+
 _pool = ThreadPoolExecutor(max_workers=12)
 
 async def _run(fn, *args):
@@ -1046,14 +1082,22 @@ def _call_gemini(system_prompt: str, user_message: str) -> tuple[str, bool]:
 
 
 def call_ai(system_prompt: str, user_message: str) -> tuple[str, bool]:
-    """Call Cohere only (Gemini key expired). Cache successful responses to soften rate limits."""
+    """Try Cohere first, fall back to Gemini. Cache successful responses for 1 hour."""
     cache_key = f"ai:{hash(system_prompt + user_message)}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached, True
-    text, ok = _call_cohere(system_prompt, user_message)
+
+    if COHERE_API_KEY:
+        text, ok = _call_cohere(system_prompt, user_message)
+        if ok:
+            _cache_set(cache_key, text, ttl_seconds=3600)
+            return text, ok
+
+    # Cohere unavailable or failed — fall back to Gemini
+    text, ok = _call_gemini(system_prompt, user_message)
     if ok:
-        _cache_set(cache_key, text, ttl_seconds=3600)  # cache successful responses for 1 hour
+        _cache_set(cache_key, text, ttl_seconds=3600)
     return text, ok
 
 
@@ -1463,11 +1507,8 @@ async def lvb_compat(user_id: Optional[int] = Query(None), db: Session = Depends
 async def coral_youtube(db: Session = Depends(get_db)):
     """YouTube liked videos via Coral SQL; falls back to demo user's Google token if Coral unavailable."""
     try:
-        result = _fetch_youtube_liked("")   # Coral uses stored credential first
-        if result.get("total", 0) == 0:
-            token = refresh_google_token_if_needed(1, db)
-            if token:
-                result = _fetch_youtube_liked(token)
+        token = _get_demo_google_token(db) or ""
+        result = _fetch_youtube_liked(token)
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -1477,11 +1518,8 @@ async def coral_youtube(db: Session = Depends(get_db)):
 async def coral_gmail(db: Session = Depends(get_db)):
     """Gmail opportunities via Coral SQL; falls back to demo user's Google token if Coral unavailable."""
     try:
-        emails = _fetch_gmail("")   # Coral uses stored credential first
-        if not emails:
-            token = refresh_google_token_if_needed(1, db)
-            if token:
-                emails = _fetch_gmail(token)
+        token = _get_demo_google_token(db) or ""
+        emails = _fetch_gmail(token)
         return {"summary": f"Found {len(emails)} developer opportunity email(s).", "emails": emails}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -1520,10 +1558,10 @@ async def coral_leetcode():
 async def coral_calendar(db: Session = Depends(get_db)):
     """Google Calendar events via Coral SQL; falls back to demo user's Google token if Coral unavailable."""
     try:
-        rows = coral_client.get_calendar_events("")
+        token = _get_demo_google_token(db) or ""
+        rows = coral_client.get_calendar_events(token)
         if rows is None:
-            # Coral unavailable — use direct Calendar API with demo user's token
-            token = refresh_google_token_if_needed(1, db)
+            # Coral unavailable — use direct Calendar API with the same token
             if token:
                 events = _fetch_calendar_events(token)
                 return {"events": events}
