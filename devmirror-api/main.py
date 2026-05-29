@@ -415,6 +415,11 @@ GMAIL_FILTER_QUERY = (
 )
 GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
+# Coral demo user — hardcoded handles (coraldevmirror branch)
+CORAL_DEMO_CF_HANDLE   = "yashasvithakur2005"
+CORAL_DEMO_GH_USERNAME = "YashasviThakur"
+CORAL_DEMO_LC_HANDLE   = "yashasvithakur2005"
+
 _CAT_KEYWORDS = {
     "internship":  ["internship", "intern", "summer", "hiring", "position", "opportunity", "job"],
     "hackathon":   ["hackathon", "hack", "hacks", "contest", "competition", "challenge"],
@@ -841,13 +846,13 @@ def _fetch_youtube_liked(access_token: str) -> dict[str, Any]:
                     cat = classified[idx]
                     cat_counts[cat] += 1
                     if cat != "Non-Technical":
-                        tech_videos.append({**video, "category": cat})
+                        tech_videos.append({**video, "categories": [cat]})
         else:
             for video in raw_videos:
                 cat = _classify_video_keywords(video["title"])
                 cat_counts[cat] += 1
                 if cat != "Non-Technical":
-                    tech_videos.append({**video, "category": cat})
+                    tech_videos.append({**video, "categories": [cat]})
         return {
             "total": len(raw_videos),
             "technical_count": len(tech_videos),
@@ -1338,39 +1343,15 @@ async def data_youtube_liked(user_id: int = Query(...), db: Session = Depends(ge
 # ── Gemini AI coach with calendar scheduling ───────────────────────────────────
 
 @app.post("/api/agent/ask")
-async def ask_agent(body: AskRequest, db: Session = Depends(get_db)):
-    user = _get_user_or_404(body.user_id, db)
-
+async def ask_agent(body: AskRequest):
+    # coraldevmirror: hardcoded demo user, no DB lookup
     system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-        goal_1=user.goal_1 or "Not set",
-        goal_2=user.goal_2 or "Not set",
-        goal_3=user.goal_3 or "Not set",
+        goal_1="Crack LeetCode 150",
+        goal_2="Reach CF 1600",
+        goal_3="Land a top internship",
         today=datetime.utcnow().strftime("%Y-%m-%d"),
     )
-
-    raw_response, gemini_ok = call_ai(system_prompt, body.question)
-    scheduled_events: list[dict] = []
-
-    if gemini_ok and _is_scheduling_request(body.question):
-        events_payload = _extract_json_array(raw_response)
-        if events_payload:
-            g_token = refresh_google_token_if_needed(body.user_id, db)
-            if g_token:
-                for ev in events_payload:
-                    if "start_time" in ev and "end_time" in ev:
-                        created = _create_calendar_event(g_token, ev)
-                        scheduled_events.append({
-                            "id":      created.get("id", ""),
-                            "summary": ev.get("summary", ""),
-                            "start":   ev.get("start_time", ""),
-                            "end":     ev.get("end_time", ""),
-                        })
-            return {
-                "response":         f"I've scheduled {len(scheduled_events)} event(s) on your Google Calendar.",
-                "scheduled_events": scheduled_events,
-                "is_schedule":      True,
-            }
-
+    raw_response, _ok = call_ai(system_prompt, body.question)
     return {
         "response":         raw_response,
         "scheduled_events": [],
@@ -1382,522 +1363,48 @@ async def ask_agent(body: AskRequest, db: Session = Depends(get_db)):
 
 @app.get("/api/dsa")
 async def dsa_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    if not user_id:
-        return {"leetcode": _empty_leetcode(""), "codeforces": _empty_codeforces("")}
-    user   = db.query(User).filter(User.id == user_id).first()
-    linked = user.linked_accounts if user else None
-    lc     = _fetch_leetcode(linked.leetcode_username) if (linked and linked.leetcode_username) else _empty_leetcode("")
-    cf     = _fetch_codeforces(linked.codeforces_handle) if (linked and linked.codeforces_handle) else _empty_codeforces("")
-    return {"leetcode": lc, "codeforces": cf}
-
-
-@app.get("/api/internship")
-async def internship_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    if not user_id:
-        return {"summary": "No user_id provided. Please log in.", "emails": []}
-    try:
-        token  = _get_valid_google_token(user_id, db)
-        emails = _fetch_gmail(token)
-        return {"summary": f"Found {len(emails)} leads.", "emails": emails}
-    except HTTPException:
-        return {"summary": "Gmail not connected.", "emails": []}
-
-
-@app.get("/api/growth-report")
-async def growth_report_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    if not user_id:
-        return {
-            "report": "Please log in to generate your growth report.",
-            "github": {"repos": 0, "commits_week": 0, "top_repo": "", "languages": []},
-            "leetcode": {"total": 0, "easy": 0, "medium": 0, "hard": 0, "streak": 0},
-            "codeforces": {"rating": 0, "rank": "unrated", "solved": 0},
-            "calendar": {"study_hours_week": 0, "upcoming": []},
-            "generated_at": datetime.utcnow().isoformat(),
-        }
-
-    user   = db.query(User).filter(User.id == user_id).first()
-    result = await _fetch_all_data(user_id=user_id, db=db)
-    lc_raw  = result.get("leetcode") or {}
-    cf_raw  = result.get("codeforces") or {}
-    gh_raw  = result.get("github") or {}
-    cal_raw = result.get("calendar") or {}
-
-    # Normalise to match GrowthReportData interface
-    lc = {
-        "total":  lc_raw.get("total_solved", 0),
-        "easy":   lc_raw.get("easy", 0),
-        "medium": lc_raw.get("medium", 0),
-        "hard":   lc_raw.get("hard", 0),
-        "streak": lc_raw.get("streak", 0),
-    }
-    cf = {
-        "rating": cf_raw.get("rating", 0),
-        "rank":   cf_raw.get("rank", "unrated"),
-        "solved": cf_raw.get("solved", 0),
-    }
-    gh = {
-        "repos":        gh_raw.get("public_repos", gh_raw.get("repos", 0)),
-        "commits_week": gh_raw.get("commits_week", 0),
-        "top_repo":     gh_raw.get("top_repo", ""),
-        "languages":    gh_raw.get("languages", []),
-    }
-
-    # Calculate study hours and upcoming events from calendar
-    events = cal_raw.get("events", [])
-    study_kws = {"study", "learn", "practice", "leetcode", "dsa", "review", "course", "tutorial"}
-    study_hours = 0.0
-    upcoming = []
-    for ev in events[:5]:
-        title = ev.get("summary", "")
-        start = ev.get("start", "")
-        upcoming.append({"title": title, "time": start[:16].replace("T", " ") if "T" in start else start[:10]})
-        if any(kw in title.lower() for kw in study_kws) and "T" in start:
-            try:
-                sd = datetime.fromisoformat(start.replace("Z", "+00:00"))
-                ed = datetime.fromisoformat(ev.get("end", "").replace("Z", "+00:00"))
-                study_hours += min((ed - sd).total_seconds() / 3600, 8)
-            except Exception:
-                pass
-    cal = {"study_hours_week": round(study_hours, 1), "upcoming": upcoming[:3]}
-
-    # Generate AI report via Gemini (with fallback)
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-    goals = f"{user.goal_1 or 'Not set'} / {user.goal_2 or 'Not set'} / {user.goal_3 or 'Not set'}" if user else "Not set"
-    question = (
-        f"Generate a motivating growth report for this developer (today: {today_str}):\n\n"
-        f"GitHub: {gh['commits_week']} commits this week, top repo: {gh['top_repo'] or 'N/A'}, "
-        f"languages: {', '.join(gh['languages'][:3]) or 'N/A'}\n"
-        f"LeetCode: {lc['total']} solved ({lc['easy']} easy / {lc['medium']} medium / {lc['hard']} hard), "
-        f"{lc['streak']}-day streak\n"
-        f"Codeforces: Rating {cf['rating']} ({cf['rank']}), {cf['solved']} solved\n"
-        f"Calendar: {study_hours:.1f}h study time, {len(events)} upcoming events\n"
-        f"Goals: {goals}\n\n"
-        f"Write a personal, energetic 150-200 word coaching report. "
-        f"Reference specific numbers. End with a concrete next action. End with ∎"
-    )
-    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-        goal_1=user.goal_1 if user else "Not set",
-        goal_2=user.goal_2 if user else "Not set",
-        goal_3=user.goal_3 if user else "Not set",
-        today=today_str,
-    )
-    report, gemini_ok = await _run(call_ai, system_prompt, question)
-
-    # If AI failed, provide a fallback report with real stats
-    if not gemini_ok:
-        report = (
-            f"**Your Growth Report**\n\n"
-            f"**GitHub**: {gh['commits_week']} commits this week | "
-            f"{gh.get('repos', 0)} public repos | Top: {gh['top_repo'] or 'N/A'}\n"
-            f"**LeetCode**: {lc['total']} problems solved | "
-            f"{lc['easy']} Easy, {lc['medium']} Medium, {lc['hard']} Hard | "
-            f"{lc['streak']}-day streak\n"
-            f"**Codeforces**: Rating {cf['rating']} ({cf['rank']}) | {cf['solved']} problems solved\n"
-            f"**Study**: {study_hours:.1f}h this week | {len(events)} calendar events\n\n"
-            f"*AI analysis unavailable. Check back when the AI service is available.*"
-        )
-
-    return {
-        "report":       report,
-        "github":       gh,
-        "leetcode":     lc,
-        "codeforces":   cf,
-        "calendar":     cal,
-        "generated_at": datetime.utcnow().isoformat(),
-    }
-
-
-@app.get("/api/focus")
-async def focus_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    if not user_id:
-        return {
-            "recommendation": "Log in to get a personalised focus recommendation from your real data.",
-            "priority_task":  "Set up your DevMirror profile",
-            "reasoning":      "Connect GitHub, LeetCode and Codeforces to unlock AI coaching.",
-            "calendar_today": [],
-            "youtube_watched": [],
-        }
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return {
-            "recommendation": "User not found. Please log in again.",
-            "priority_task":  "Log in", "reasoning": "",
-            "calendar_today": [], "youtube_watched": [],
-        }
-
-    linked      = user.linked_accounts
-    gh_username = _resolve_github_username(user_id, db)
-    g_token     = refresh_google_token_if_needed(user_id, db)
-
-    async def _lc():
-        if linked and linked.leetcode_username:
-            try: return await _run(_fetch_leetcode, linked.leetcode_username)
-            except Exception: pass
-        return None
-
-    async def _cf():
-        if linked and linked.codeforces_handle:
-            try: return await _run(_fetch_codeforces, linked.codeforces_handle)
-            except Exception: pass
-        return None
-
-    async def _gh():
-        if gh_username:
-            try:
-                d = await _run(_fetch_github_cached, gh_username)
-                d.pop("_events", None)
-                return d
-            except Exception: pass
-        return None
-
-    async def _cal():
-        if g_token:
-            try: return await _run(_fetch_calendar_events, g_token)
-            except Exception: pass
-        return []
-
-    lc, cf, gh, calendar_events = await asyncio.gather(_lc(), _cf(), _gh(), _cal())
-    calendar_events = calendar_events or []
-
-    today_str = datetime.utcnow().strftime("%A, %Y-%m-%d")
-    stats = f"Today is {today_str}.\n"
-
-    if lc:
-        stats += (
-            f"\nLeetCode: {lc['total_solved']} solved "
-            f"({lc['easy']} easy / {lc['medium']} medium / {lc['hard']} hard), "
-            f"{lc.get('streak', 0)}-day streak, "
-            f"{lc.get('acceptance_rate', 0):.1f}% acceptance rate.\n"
-        )
-        if lc.get("recent"):
-            titles = ", ".join(p["title"] for p in lc["recent"][:3])
-            stats += f"Recent problems: {titles}.\n"
-
-    if cf:
-        stats += f"\nCodeforces: Rating {cf['rating']} ({cf['rank']}), {cf.get('solved', 0)} solved.\n"
-
-    if gh:
-        stats += (
-            f"\nGitHub: {gh.get('commits_week', 0)} commits this week, "
-            f"top repo: {gh.get('top_repo', 'N/A')}, "
-            f"languages: {', '.join(gh.get('languages', [])[:3])}.\n"
-        )
-
-    # Use a ±12h window so events match regardless of user's timezone
-    now_utc = datetime.utcnow()
-    window_start = (now_utc - timedelta(hours=12)).date()
-    window_end   = (now_utc + timedelta(hours=12)).date()
-    today_events = []
-    for e in calendar_events:
-        start = e.get("start") or ""
-        try:
-            # Handle both all-day events (YYYY-MM-DD) and timed events (YYYY-MM-DDTHH:MM:SS...)
-            if "T" in start:
-                event_date = datetime.fromisoformat(start.replace("Z", "+00:00")).date()
-            else:
-                event_date = datetime.strptime(start, "%Y-%m-%d").date()
-            if window_start <= event_date <= window_end:
-                today_events.append(e)
-        except (ValueError, AttributeError, TypeError):
-            pass
-    if today_events:
-        titles = ", ".join(e["summary"] for e in today_events[:3])
-        stats += f"\nCalendar today: {titles}.\n"
-
-    question = (
-        f"Based on this developer's current data, give a focused daily recommendation:\n\n"
-        f"{stats}\n"
-        f"Goals: {user.goal_1 or 'Not set'} / {user.goal_2 or 'Not set'} / {user.goal_3 or 'Not set'}\n\n"
-        f"Give a specific, motivating focus recommendation for today. Be concrete — name "
-        f"actual problem types, repos, or skills. Keep it under 200 words. End with ∎"
-    )
-
-    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-        goal_1=user.goal_1 or "Not set",
-        goal_2=user.goal_2 or "Not set",
-        goal_3=user.goal_3 or "Not set",
-        today=today_str,
-    )
-
-    recommendation, gemini_ok = await _run(call_ai, system_prompt, question)
-
-    # If AI failed, provide a basic recommendation
-    if not gemini_ok:
-        recommendation = (
-            "**Focus Today**\n\n"
-            "AI analysis is temporarily unavailable. "
-            "Check the data below and your calendar for guidance."
-        )
-
-    # Derive priority task heuristically
-    if lc and lc.get("streak", 0) > 0:
-        priority_task = f"Maintain your {lc['streak']}-day LeetCode streak"
-        reasoning = "Streak momentum is hard to rebuild — protect it"
-    elif lc and lc.get("total_solved", 0) < 50:
-        priority_task = "Solve 2 LeetCode problems (Easy → Medium)"
-        reasoning = "Foundation-building phase — consistency beats intensity"
-    elif cf and cf.get("rating", 0) < 1200:
-        priority_task = "Attempt a Codeforces Div. 3 contest"
-        reasoning = "Contests build speed and pressure-handling"
-    elif gh and gh.get("commits_week", 0) == 0:
-        priority_task = "Push at least one commit today"
-        reasoning = "Building habit — even a small commit counts"
-    else:
-        priority_task = "Review and refactor your top GitHub repo"
-        reasoning = "Code quality compounds over time"
-
-    # Format today's calendar events
-    today_cal: list[dict] = []
-    for ev in today_events[:10]:
-        start_str = ev.get("start", "")
-        end_str   = ev.get("end", "")
-        try:
-            if "T" in start_str:
-                # Timed event
-                start_dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                duration = ""
-                if end_str and "T" in end_str:
-                    end_dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-                    mins   = int((end_dt - start_dt).total_seconds() / 60)
-                    duration = f"{mins // 60}h {mins % 60}m" if mins >= 60 else f"{mins}m"
-                today_cal.append({
-                    "title":    ev.get("summary", "Event"),
-                    "time":     start_dt.strftime("%I:%M %p"),
-                    "duration": duration,
-                })
-            else:
-                # All-day event (no T in start)
-                today_cal.append({
-                    "title":    ev.get("summary", "Event"),
-                    "time":     "All day",
-                    "duration": "",
-                })
-        except Exception:
-            pass
-
-    # Fetch recently-liked technical YouTube videos (YouTube API does not expose
-    # "liked at" timestamps, so we show the top technical liked videos instead)
-    youtube_today: list[dict] = []
-    if g_token:
-        try:
-            yt_data = _fetch_youtube_liked(g_token)
-            for video in yt_data.get("top_videos", [])[:5]:
-                youtube_today.append({
-                    "title":   video.get("title", ""),
-                    "channel": video.get("channel", ""),
-                    "duration": "—",
-                })
-        except Exception:
-            pass
-
-    return {
-        "recommendation":  recommendation,
-        "priority_task":   priority_task,
-        "reasoning":       reasoning,
-        "calendar_today":  today_cal,
-        "youtube_watched": youtube_today,
-    }
-
-
-@app.get("/api/learn-vs-build")
-async def lvb_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
-    if not user_id:
-        return {
-            "analysis":            "Connect your accounts to see your real learn/build balance.",
-            "learn_score":         50,
-            "build_score":         50,
-            "balance":             "balanced",
-            "github_commits_week": 0,
-            "youtube_hours_week":  0,
-            "study_hours_week":    0,
-            "trend":               [],
-        }
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        return {
-            "analysis": "User not found.", "learn_score": 50, "build_score": 50,
-            "balance": "balanced", "github_commits_week": 0,
-            "youtube_hours_week": 0, "study_hours_week": 0, "trend": [],
-        }
-
-    linked = user.linked_accounts
-
-    commits_week    = 0
-    study_hours     = 0.0
-    lc_streak       = 0
-    lc_solved       = 0
-
-    gh_events: list[dict] = []
-    gh_username = _resolve_github_username(user_id, db)
-    if gh_username:
-        try:
-            gh = _fetch_github_cached(gh_username)
-            commits_week = gh.get("commits_week", 0)
-            gh_events = gh.get("_events", [])
-        except Exception:
-            pass
-
-    if linked and linked.leetcode_username:
-        try:
-            lc = _fetch_leetcode(linked.leetcode_username)
-            lc_streak = lc.get("streak", 0)
-            lc_solved = lc.get("total_solved", 0)
-        except Exception:
-            pass
-
-    g_token = refresh_google_token_if_needed(user_id, db)
-    if g_token:
-        try:
-            events = _fetch_calendar_events(g_token)
-            study_kws = {"study", "learn", "practice", "leetcode", "dsa", "review", "read", "course", "tutorial", "revision"}
-            for ev in events:
-                if any(kw in ev.get("summary", "").lower() for kw in study_kws):
-                    s, e = ev.get("start", ""), ev.get("end", "")
-                    if s and e and "T" in s:
-                        try:
-                            sd = datetime.fromisoformat(s.replace("Z", "+00:00"))
-                            ed = datetime.fromisoformat(e.replace("Z", "+00:00"))
-                            study_hours += min((ed - sd).total_seconds() / 3600, 8)
-                        except Exception:
-                            pass
-        except Exception:
-            pass
-
-    # Score calculation
-    build_pts = commits_week * 10
-    learn_pts = lc_streak * 5 + study_hours * 8
-    total_pts = max(build_pts + learn_pts, 1)
-    build_score = int(max(10, min(90, (build_pts / total_pts) * 100)))
-    learn_score = 100 - build_score
-
-    if build_score < 35:
-        balance = "learning_heavy"
-    elif build_score > 65:
-        balance = "building_heavy"
-    else:
-        balance = "balanced"
-
-    # Real 6-week trend — derived from GitHub push events
-    today_dt = datetime.utcnow()
-    weekly_commits: dict[int, int] = defaultdict(int)   # weeks_ago → commit count
-    for e in gh_events:
-        if not isinstance(e, dict) or e.get("type") != "PushEvent":
-            continue
-        try:
-            created = datetime.strptime(e["created_at"][:10], "%Y-%m-%d")
-            weeks_ago = (today_dt.date() - created.date()).days // 7
-            if 0 <= weeks_ago < 6:
-                weekly_commits[weeks_ago] += 1
-        except (KeyError, ValueError):
-            pass
-
-    trend = []
-    for weeks_ago in range(5, -1, -1):
-        week_start = today_dt - timedelta(weeks=weeks_ago)
-        label = f"{week_start.strftime('%b')} W{(week_start.day - 1) // 7 + 1}"
-        wc = weekly_commits.get(weeks_ago, 0)
-        w_build_pts = wc * 10
-        w_learn_pts = lc_streak * 2 if weeks_ago == 0 else 0
-        w_total = max(w_build_pts + w_learn_pts, 1)
-        w_build = int(max(10, min(90, (w_build_pts / w_total) * 100))) if (w_build_pts + w_learn_pts) > 0 else build_score
-        trend.append({"week": label, "learn": 100 - w_build, "build": w_build})
-
-    question = (
-        f"Analyze this developer's learning vs building balance:\n"
-        f"- GitHub commits this week: {commits_week}\n"
-        f"- LeetCode streak: {lc_streak} days, {lc_solved} total solved\n"
-        f"- Study hours from calendar: {study_hours:.1f}h\n"
-        f"- Learn score: {learn_score}%, Build score: {build_score}% → {balance}\n"
-        f"- Goals: {user.goal_1 or 'Not set'} / {user.goal_2 or 'Not set'} / {user.goal_3 or 'Not set'}\n\n"
-        f"Give a concise 3-4 sentence analysis. Be specific and actionable. End with ∎"
-    )
-
-    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-        goal_1=user.goal_1 or "Not set",
-        goal_2=user.goal_2 or "Not set",
-        goal_3=user.goal_3 or "Not set",
-        today=datetime.utcnow().strftime("%Y-%m-%d"),
-    )
-
-    analysis, gemini_ok = call_ai(system_prompt, question)
-
-    # If Gemini failed, provide a fallback analysis
-    if not gemini_ok:
-        if balance == "learning_heavy":
-            analysis = (
-                f"You're **learning-focused** ({learn_score}% learn vs {build_score}% build). "
-                f"Consider starting a small project to apply knowledge."
-            )
-        elif balance == "building_heavy":
-            analysis = (
-                f"You're **build-focused** ({build_score}% build vs {learn_score}% learn). "
-                f"Remember to dedicate time for learning and skill expansion."
-            )
-        else:
-            analysis = (
-                f"You have a **balanced** learning and building schedule ({learn_score}% learn, {build_score}% build). "
-                f"Keep maintaining this healthy mix."
-            )
-
-    return {
-        "analysis":            analysis,
-        "learn_score":         learn_score,
-        "build_score":         build_score,
-        "balance":             balance,
-        "github_commits_week": commits_week,
-        "youtube_hours_week":  0.0,
-        "study_hours_week":    round(study_hours, 1),
-        "trend":               trend,
-    }
-
-
-# ── Coral Demo endpoints (no auth, single-user hardcoded data via Coral SQL) ───
-
-CORAL_DEMO_CF_HANDLE   = "yashasvithakur2005"
-CORAL_DEMO_GH_USERNAME = "YashasviThakur"
-CORAL_DEMO_LC_HANDLE   = "yashasvithakur2005"
-
-
-# Override legacy endpoints so user_id=1 works without a real DB user
-@app.get("/api/dsa", include_in_schema=False)
-async def dsa_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+    # coraldevmirror: always use Coral demo handles
     lc = _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
     cf = _fetch_codeforces(CORAL_DEMO_CF_HANDLE)
     return {"leetcode": lc, "codeforces": cf}
 
 
-@app.get("/api/internship", include_in_schema=False)
-async def internship_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+@app.get("/api/internship")
+async def internship_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    # coraldevmirror: use Coral Gmail (token ignored)
     emails = _fetch_gmail("")
     return {"summary": f"Found {len(emails)} leads.", "emails": emails}
 
 
-@app.get("/api/growth-report", include_in_schema=False)
-async def growth_report_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+@app.get("/api/growth-report")
+async def growth_report_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    # coraldevmirror: hardcoded demo handles, no DB lookup
     gh, lc, cf = await asyncio.gather(
         _run(_fetch_github_cached, CORAL_DEMO_GH_USERNAME),
         _run(_fetch_leetcode, CORAL_DEMO_LC_HANDLE),
         _run(_fetch_codeforces, CORAL_DEMO_CF_HANDLE),
     )
+    if isinstance(gh, dict):
+        gh.pop("_events", None)
     report = (
-        f"GitHub: {gh.get('commits_week', 0)} commits this week across {gh.get('repos', 0)} repos. "
+        f"GitHub: {gh.get('commits_week', 0)} commits this week across {gh.get('public_repos', gh.get('repos', 0))} repos. "
         f"LeetCode: {lc.get('total_solved', 0)} solved (streak: {lc.get('streak', 0)} days). "
         f"Codeforces rating: {cf.get('rating', 0)} ({cf.get('rank', 'unrated')})."
     ) if gh and lc and cf else "Data loading via Coral SQL..."
     return {
         "report":       report,
-        "github":       {"repos": gh.get("repos", 0), "commits_week": gh.get("commits_week", 0), "top_repo": gh.get("top_repo", ""), "languages": gh.get("languages", [])} if gh else {},
-        "leetcode":     {"total": lc.get("total_solved", 0), "easy": lc.get("easy", 0), "medium": lc.get("medium", 0), "hard": lc.get("hard", 0), "streak": lc.get("streak", 0)} if lc else {},
-        "codeforces":   {"rating": cf.get("rating", 0), "rank": cf.get("rank", ""), "solved": cf.get("solved", 0)} if cf else {},
+        "github":       {"repos": gh.get("public_repos", gh.get("repos", 0)), "commits_week": gh.get("commits_week", 0), "top_repo": gh.get("top_repo", ""), "languages": gh.get("languages", [])} if gh else {"repos": 0, "commits_week": 0, "top_repo": "", "languages": []},
+        "leetcode":     {"total": lc.get("total_solved", 0), "easy": lc.get("easy", 0), "medium": lc.get("medium", 0), "hard": lc.get("hard", 0), "streak": lc.get("streak", 0)} if lc else {"total": 0, "easy": 0, "medium": 0, "hard": 0, "streak": 0},
+        "codeforces":   {"rating": cf.get("rating", 0), "rank": cf.get("rank", "unrated"), "solved": cf.get("solved", 0)} if cf else {"rating": 0, "rank": "unrated", "solved": 0},
         "calendar":     {"study_hours_week": 0, "upcoming": []},
         "generated_at": datetime.utcnow().isoformat(),
     }
 
 
-@app.get("/api/focus", include_in_schema=False)
-async def focus_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+
+@app.get("/api/focus")
+async def focus_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    # coraldevmirror: hardcoded demo handles, no DB lookup
     lc = _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
     cf = _fetch_codeforces(CORAL_DEMO_CF_HANDLE)
     if lc and lc.get("streak", 0) > 0:
@@ -1918,15 +1425,16 @@ async def focus_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
     }
 
 
-@app.get("/api/learn-vs-build", include_in_schema=False)
-async def learn_vs_build_coral(_user_id: Optional[int] = Query(None, alias="user_id")):
+
+@app.get("/api/learn-vs-build")
+async def lvb_compat(user_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    # coraldevmirror: hardcoded demo handles, no DB lookup
     gh = _fetch_github_cached(CORAL_DEMO_GH_USERNAME)
     lc = _fetch_leetcode(CORAL_DEMO_LC_HANDLE)
     commits = gh.get("commits_week", 0) if gh else 0
     solved  = lc.get("total_solved", 0) if lc else 0
     learn_score = min(100, solved * 2)
     build_score = min(100, commits * 10)
-    total = learn_score + build_score or 1
     balance = "balanced" if abs(learn_score - build_score) < 20 else ("learning_heavy" if learn_score > build_score else "building_heavy")
     return {
         "analysis":            f"You've solved {solved} problems and made {commits} commits this week.",
@@ -1940,20 +1448,6 @@ async def learn_vs_build_coral(_user_id: Optional[int] = Query(None, alias="user
     }
 
 
-@app.post("/api/agent/ask", include_in_schema=False)
-async def ask_coral(body: AskRequest, _db: Session = Depends(get_db)):
-    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(
-        goal_1="Crack LeetCode 150",
-        goal_2="Reach CF 1600",
-        goal_3="Land a top internship",
-        today=datetime.utcnow().strftime("%Y-%m-%d"),
-    )
-    raw_response, gemini_ok = call_ai(system_prompt, body.question)
-    return {
-        "response":          raw_response,
-        "scheduled_events":  [],
-        "is_schedule":       False,
-    }
 
 
 @app.get("/api/coral/youtube")
@@ -2008,23 +1502,25 @@ async def coral_leetcode():
 async def coral_calendar():
     """Google Calendar events via Coral SQL — no auth required."""
     try:
-        now = datetime.utcnow().isoformat() + "Z"
-        future = (datetime.utcnow() + timedelta(days=14)).isoformat() + "Z"
-        rows = coral_client.get_calendar_events("", time_min=now, time_max=future)
+        rows = coral_client.get_calendar_events("")
         if rows is None:
-            # fallback: return empty
             return {"events": []}
-        events = [
-            {
+        now_iso = datetime.utcnow().isoformat()
+        events = []
+        for r in rows:
+            start = str(r.get("start_date_time") or r.get("start_date") or "")
+            # filter past events
+            if start and start[:19] < now_iso[:19]:
+                continue
+            events.append({
                 "id":          r.get("id", ""),
                 "summary":     r.get("summary", ""),
                 "description": r.get("description", ""),
-                "start":       str(r.get("start_date_time") or r.get("start_date") or ""),
+                "start":       start,
                 "end":         str(r.get("end_date_time") or r.get("end_date") or ""),
-            }
-            for r in rows
-        ]
-        return {"events": events}
+            })
+        events.sort(key=lambda e: e["start"])
+        return {"events": events[:30]}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
