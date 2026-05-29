@@ -1,6 +1,8 @@
 #!/bin/bash
+export PATH="/root/.coral/bin:/usr/local/bin:$PATH"
 
 echo "[DevMirror] PORT is: $PORT"
+echo "[DevMirror] coral path: $(which coral 2>/dev/null || echo 'NOT FOUND')"
 
 # Refresh tokens
 python /app/refresh_coral_tokens.py
