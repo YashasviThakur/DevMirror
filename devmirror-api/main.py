@@ -14,7 +14,7 @@ import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import requests
@@ -1046,16 +1046,15 @@ def _call_gemini(system_prompt: str, user_message: str) -> tuple[str, bool]:
 
 
 def call_ai(system_prompt: str, user_message: str) -> tuple[str, bool]:
-    """Call AI: Cohere preferred, fall back to Gemini if Cohere rate-limited or fails."""
-    if USE_COHERE:
-        text, ok = _call_cohere(system_prompt, user_message)
-        if ok:
-            return text, True
-        if GEMINI_API_KEY:
-            logger.warning("Cohere failed, falling back to Gemini")
-            return _call_gemini(system_prompt, user_message)
-        return text, ok
-    return _call_gemini(system_prompt, user_message)
+    """Call Cohere only (Gemini key expired). Cache successful responses to soften rate limits."""
+    cache_key = f"ai:{hash(system_prompt + user_message)}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached, True
+    text, ok = _call_cohere(system_prompt, user_message)
+    if ok:
+        _cache_set(cache_key, text, ttl_seconds=3600)  # cache successful responses for 1 hour
+    return text, ok
 
 
 # ── Pydantic request/response models ──────────────────────────────────────────
@@ -1461,19 +1460,28 @@ async def lvb_compat(user_id: Optional[int] = Query(None), db: Session = Depends
 
 
 @app.get("/api/coral/youtube")
-async def coral_youtube():
-    """YouTube liked videos via Coral SQL — no auth required."""
+async def coral_youtube(db: Session = Depends(get_db)):
+    """YouTube liked videos via Coral SQL; falls back to demo user's Google token if Coral unavailable."""
     try:
-        return _fetch_youtube_liked("")   # token ignored; Coral uses stored credential
+        result = _fetch_youtube_liked("")   # Coral uses stored credential first
+        if result.get("total", 0) == 0:
+            token = refresh_google_token_if_needed(1, db)
+            if token:
+                result = _fetch_youtube_liked(token)
+        return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/api/coral/gmail")
-async def coral_gmail():
-    """Gmail opportunities via Coral SQL — no auth required."""
+async def coral_gmail(db: Session = Depends(get_db)):
+    """Gmail opportunities via Coral SQL; falls back to demo user's Google token if Coral unavailable."""
     try:
-        emails = _fetch_gmail("")   # token ignored; Coral uses stored credential
+        emails = _fetch_gmail("")   # Coral uses stored credential first
+        if not emails:
+            token = refresh_google_token_if_needed(1, db)
+            if token:
+                emails = _fetch_gmail(token)
         return {"summary": f"Found {len(emails)} developer opportunity email(s).", "emails": emails}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -1509,11 +1517,16 @@ async def coral_leetcode():
 
 
 @app.get("/api/coral/calendar")
-async def coral_calendar():
-    """Google Calendar events via Coral SQL — no auth required."""
+async def coral_calendar(db: Session = Depends(get_db)):
+    """Google Calendar events via Coral SQL; falls back to demo user's Google token if Coral unavailable."""
     try:
         rows = coral_client.get_calendar_events("")
         if rows is None:
+            # Coral unavailable — use direct Calendar API with demo user's token
+            token = refresh_google_token_if_needed(1, db)
+            if token:
+                events = _fetch_calendar_events(token)
+                return {"events": events}
             return {"events": []}
         now = datetime.utcnow()
         cutoff = now - timedelta(days=1)  # include events from yesterday onwards
@@ -1524,7 +1537,10 @@ async def coral_calendar():
                 continue
             try:
                 if "T" in start_raw:
-                    start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00")).replace(tzinfo=None)
+                    start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+                    # Convert timezone-aware dt to naive UTC for comparison
+                    if start_dt.tzinfo is not None:
+                        start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
                 else:
                     start_dt = datetime.strptime(start_raw[:10], "%Y-%m-%d")
             except (ValueError, TypeError):
