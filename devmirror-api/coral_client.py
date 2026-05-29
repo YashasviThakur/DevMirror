@@ -94,7 +94,7 @@ def get_gmail_opportunities(access_token: str) -> Optional[list[dict]]:
     env = {"GMAIL_ACCESS_TOKEN": access_token}
     return _run_sql(
         "SELECT id, snippet FROM gmail.threads "
-        "WHERE q = 'subject:(internship OR hackathon OR scholarship) is:unread' "
+        "WHERE q = 'subject:(internship OR hackathon OR scholarship OR hiring OR opportunity)' "
         "LIMIT 20",
         env=env,
     )
@@ -139,15 +139,10 @@ def get_youtube_channel_stats(access_token: str) -> Optional[dict[str, Any]]:
 def get_calendar_events(access_token: str, time_min: str = "", time_max: str = "") -> Optional[list[dict]]:
     """Upcoming calendar events via Coral SQL."""
     env = {"GOOGLE_CALENDAR_ACCESS_TOKEN": access_token}
-    where = ""
-    if time_min:
-        where += f" WHERE time_min = '{time_min}'"
-    if time_max:
-        where += (" AND" if where else " WHERE") + f" time_max = '{time_max}'"
     return _run_sql(
-        f"SELECT id, summary, description, start_date_time, end_date_time, location, html_link "
-        f"FROM google_calendar.events{where} "
-        f"ORDER BY start_date_time ASC LIMIT 50",
+        "SELECT id, summary, description, start_date_time, end_date_time, location, html_link "
+        "FROM google_calendar.events "
+        "ORDER BY start_date_time ASC LIMIT 50",
         env=env,
     )
 

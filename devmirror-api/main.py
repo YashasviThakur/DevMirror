@@ -844,7 +844,7 @@ def _fetch_youtube_liked(access_token: str) -> dict[str, Any]:
                         tech_videos.append({**video, "category": cat})
         else:
             for video in raw_videos:
-                cat = _classify_video_keywords(video["title"], video["channel"])
+                cat = _classify_video_keywords(video["title"])
                 cat_counts[cat] += 1
                 if cat != "Non-Technical":
                     tech_videos.append({**video, "category": cat})
