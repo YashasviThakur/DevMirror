@@ -321,9 +321,9 @@ export default function Dashboard() {
                     Top: <span className="text-dm-purple-ll font-mono">{github.top_repo}</span>
                   </span>
                 </div>
-                {github.languages.length > 0 && (
+                {(github.languages ?? []).length > 0 && (
                   <div className="flex gap-1.5 flex-wrap mt-3">
-                    {github.languages.map(l => (
+                    {(github.languages ?? []).map(l => (
                       <span key={l} className="dm-badge-purple text-[10px]">{l}</span>
                     ))}
                   </div>
@@ -369,9 +369,9 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {codeforces.recent.length > 0 && (
+                {(codeforces.recent ?? []).length > 0 && (
                   <div className="space-y-1.5 border-t border-dm-border pt-3">
-                    {codeforces.recent.slice(0, 4).map((s, i) => (
+                    {(codeforces.recent ?? []).slice(0, 4).map((s, i) => (
                       <div key={i} className="flex items-center gap-2">
                         {s.verdict === 'OK'
                           ? <CheckCircle2 size={11} className="text-dm-green shrink-0" />
