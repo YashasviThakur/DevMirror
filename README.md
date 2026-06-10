@@ -44,6 +44,13 @@ Built for developers who are serious about their growth.
 - Displayed alongside GitHub in the same unified view
 - Authenticated via Personal Access Token (`read_api`, `read_user`, `read_repository`)
 
+### GitLab Orbit + AI Code Coach ⭐ (New)
+- **Orbit Context API** — Fetches structured codebase context (project structure, complexity metrics, file hierarchy)
+- **MR Analysis** — AI-powered code review for any merge request with actionable feedback
+- **Technical Debt Detection** — Identifies code complexity hotspots, testing gaps, and improvement opportunities
+- **Real-time AI Coaching** — Gemini 2.5 Flash analyzes changes and provides constructive, specific suggestions
+- **Agent Tool Integration** — Code Coach seamlessly integrates into the Gemini agent for context-aware development coaching
+
 ### Gmail Radar
 - Automatically filters your inbox for **internships, hackathons, and scholarships**
 - Smart categorisation: Internship / Hackathon / Fellowship / Other
@@ -76,11 +83,11 @@ Browser
         └── /api/* → FastAPI (Railway)
                 ├── Google OAuth2 (login, Gmail, Calendar, YouTube)
                 ├── GitHub REST API
-                ├── GitLab REST API
+                ├── GitLab REST API + Orbit GraphQL ⭐
                 ├── LeetCode GraphQL API
                 ├── Codeforces API
                 ├── MongoDB Atlas  (user profiles, encrypted tokens)
-                └── Gemini 2.5 Flash  (multi-step agent via REST)
+                └── Gemini 2.5 Flash  (multi-step agent + code analysis via REST)
 ```
 
 ### Multi-step Gemini Agent
