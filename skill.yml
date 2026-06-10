@@ -1,0 +1,89 @@
+name: DevMirror Code Coach
+description: AI-powered code analysis and technical debt detection using GitLab Orbit context
+version: 1.0.0
+author: Yashasvi Thakur
+repository: https://github.com/YashasviThakur/DevMirror
+license: MIT
+
+capabilities:
+  - name: analyze-mr
+    description: "Analyze a GitLab merge request with AI-powered code review"
+    endpoint: /api/coach/analyze-mr
+    method: POST
+    parameters:
+      - name: user_id
+        type: integer
+        required: true
+        description: DevMirror user ID
+      - name: project_id
+        type: integer
+        required: true
+        description: GitLab project ID
+      - name: mr_iid
+        type: integer
+        required: true
+        description: GitLab merge request IID
+    returns:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether analysis succeeded
+        mr_title:
+          type: string
+          description: Title of the analyzed merge request
+        ai_analysis:
+          type: string
+          description: AI-generated code review with quality score and improvement suggestions
+
+  - name: find-debt
+    description: "Identify technical debt patterns in a GitLab project"
+    endpoint: /api/coach/find-debt
+    method: POST
+    parameters:
+      - name: user_id
+        type: integer
+        required: true
+        description: DevMirror user ID
+      - name: project_id
+        type: integer
+        required: true
+        description: GitLab project ID
+    returns:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether analysis succeeded
+        debt_analysis:
+          type: string
+          description: AI analysis of technical debt areas (complexity, testing gaps, docs, dependencies, performance)
+        metrics:
+          type: object
+          description: Project metrics used in analysis
+
+integration:
+  platform: GitLab Duo Agent Platform
+  orbit_enabled: true
+  orbit_features:
+    - codebase_context
+    - project_structure
+    - complexity_metrics
+    - mr_impact_analysis
+
+pricing_model: free
+support_contact: yashasvithakur2005@gmail.com
+
+tags:
+  - code-analysis
+  - code-review
+  - technical-debt
+  - ai-coaching
+  - gitlab-orbit
+  - gemini
+
+documentation:
+  - title: "Full Documentation"
+    url: "https://github.com/YashasviThakur/DevMirror/blob/main/GITLAB_TRANSCEND.md"
+  - title: "Quick Start"
+    url: "https://github.com/YashasviThakur/DevMirror/blob/main/QUICKSTART.md"

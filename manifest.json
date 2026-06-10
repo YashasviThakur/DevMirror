@@ -1,0 +1,85 @@
+{
+  "id": "devmirror-code-coach",
+  "name": "DevMirror Code Coach",
+  "description": "AI-powered code analysis and technical debt detection using GitLab Orbit context. Provides intelligent merge request reviews and identifies technical debt patterns.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Yashasvi Thakur",
+    "email": "yashasvithakur2005@gmail.com",
+    "github": "YashasviThakur"
+  },
+  "repository": {
+    "url": "https://github.com/YashasviThakur/DevMirror",
+    "type": "git"
+  },
+  "license": "MIT",
+  "keywords": [
+    "code-analysis",
+    "code-review",
+    "technical-debt",
+    "ai-coaching",
+    "gitlab-orbit",
+    "gemini",
+    "merge-request-analysis"
+  ],
+  "capabilities": [
+    {
+      "name": "analyze-merge-request",
+      "description": "Analyze a GitLab merge request with AI-powered code review",
+      "icon": "review",
+      "tags": ["code-review", "ai", "mr-analysis"]
+    },
+    {
+      "name": "detect-technical-debt",
+      "description": "Identify technical debt patterns and improvement areas in a project",
+      "icon": "warning",
+      "tags": ["technical-debt", "analysis", "improvement"]
+    }
+  ],
+  "integration": {
+    "type": "agent-skill",
+    "platform": "GitLab Duo Agent Platform",
+    "orbit_enabled": true,
+    "gemini_enabled": true,
+    "requires": {
+      "gitlab_token": "GitLab personal access token with api scope",
+      "gemini_api_key": "Google Gemini API key"
+    }
+  },
+  "dependencies": {
+    "runtime": "python-3.10+",
+    "frameworks": ["fastapi", "requests"],
+    "external_apis": [
+      "GitLab REST API v4",
+      "GitLab Orbit GraphQL API",
+      "Google Gemini 2.5 Flash"
+    ]
+  },
+  "endpoints": {
+    "analyze_mr": {
+      "path": "/api/coach/analyze-mr",
+      "method": "POST",
+      "authentication": "user_id + gitlab_token"
+    },
+    "find_debt": {
+      "path": "/api/coach/find-debt",
+      "method": "POST",
+      "authentication": "user_id + gitlab_token"
+    }
+  },
+  "documentation": {
+    "readme": "https://github.com/YashasviThakur/DevMirror#readme",
+    "getting_started": "https://github.com/YashasviThakur/DevMirror/blob/main/QUICKSTART.md",
+    "full_docs": "https://github.com/YashasviThakur/DevMirror/blob/main/GITLAB_TRANSCEND.md"
+  },
+  "support": {
+    "issues": "https://github.com/YashasviThakur/DevMirror/issues",
+    "email": "yashasvithakur2005@gmail.com"
+  },
+  "pricing": {
+    "model": "free",
+    "tier": "community"
+  },
+  "status": "active",
+  "lastUpdated": "2026-06-11"
+}
