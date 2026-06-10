@@ -45,6 +45,8 @@ from models import User, LinkedAccount, get_db, init_db
 from auth_router import router as auth_router, refresh_google_token_if_needed
 import coral_client
 import gitlab_client
+import gitlab_orbit_client
+import code_coach_agent
 import mongodb_client
 from agent_tools import AgentContext, run_agent
 
@@ -1355,6 +1357,24 @@ async def data_gitlab(user_id: int = Query(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.get("/api/data/gitlab/orbit")
+async def data_gitlab_orbit(
+    user_id: int = Query(...),
+    project_id: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Fetch GitLab Orbit context for code analysis and AI coaching."""
+    user = _get_user_or_404(user_id, db)
+    linked = user.linked_accounts
+    gl_token = linked.gitlab_token if linked else None
+    if not gl_token:
+        raise HTTPException(status_code=400, detail="GitLab token required for Orbit context.")
+    try:
+        return await _run(gitlab_orbit_client.fetch_orbit_context, project_id, gl_token)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/api/data/calendar")
 async def data_calendar(user_id: int = Query(...), db: Session = Depends(get_db)):
     token  = _get_valid_google_token(user_id, db)
@@ -1535,6 +1555,49 @@ async def ask_agent(body: AskRequest, db: Session = Depends(get_db)):
         "is_schedule":      result.get("is_schedule", False),
         "tool_calls":       result.get("tool_calls", []),
     }
+
+
+# ── GitLab Code Coach Endpoints ────────────────────────────────────────────────
+
+@app.post("/api/coach/analyze-mr")
+async def coach_analyze_mr(
+    user_id: int = Query(...),
+    project_id: int = Query(...),
+    mr_iid: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Analyze a GitLab MR using AI-powered code review."""
+    user = _get_user_or_404(user_id, db)
+    linked = user.linked_accounts
+    gl_token = linked.gitlab_token if linked else None
+    if not gl_token:
+        raise HTTPException(status_code=400, detail="GitLab token required.")
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if not gemini_key:
+        raise HTTPException(status_code=500, detail="Gemini API key not configured.")
+
+    return await _run(code_coach_agent.analyze_merge_request, project_id, mr_iid, gl_token, gemini_key)
+
+
+@app.post("/api/coach/find-debt")
+async def coach_find_debt(
+    user_id: int = Query(...),
+    project_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Identify technical debt in a GitLab project."""
+    user = _get_user_or_404(user_id, db)
+    linked = user.linked_accounts
+    gl_token = linked.gitlab_token if linked else None
+    if not gl_token:
+        raise HTTPException(status_code=400, detail="GitLab token required.")
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if not gemini_key:
+        raise HTTPException(status_code=500, detail="Gemini API key not configured.")
+
+    return await _run(code_coach_agent.find_technical_debt, project_id, gl_token, gemini_key)
 
 
 # ── Backward-compatible endpoints (single-user fallback) ─────────────────────
