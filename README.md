@@ -16,9 +16,13 @@ One dashboard for your GitHub, GitLab, LeetCode, Codeforces, Gmail, Calendar, an
 
 <br />
 
-[**Live Demo →**](https://dev-mirror-two.vercel.app) &nbsp;·&nbsp; [**Report a Bug**](https://github.com/YashasviThakur/DevMirror/issues) &nbsp;·&nbsp; [**Request a Feature**](https://github.com/YashasviThakur/DevMirror/issues)
+[**Live Demo →**](https://dev-mirror-two.vercel.app) &nbsp;·&nbsp; [**Watch Demo Video →**](https://youtu.be/n3rO5HjqChg?si=vbb8ccz3Bd0lJb6L) &nbsp;·&nbsp; [**Report a Bug**](https://github.com/YashasviThakur/DevMirror/issues)
 
 </div>
+
+## 🎬 Demo Video
+
+[![DevMirror Demo](https://img.youtube.com/vi/n3rO5HjqChg/0.jpg)](https://youtu.be/n3rO5HjqChg?si=vbb8ccz3Bd0lJb6L)
 
 ---
 
